@@ -1,6 +1,6 @@
 import threading
+import typing
 from enum import Enum, auto
-from typing import Optional
 
 __all__ = ['RWLock', 'LockType']
 
@@ -21,7 +21,7 @@ class RWLock:
         self._nb_read = 0
         self._nb_write = 0
 
-    def acquire_write_lock(self, wait_time: Optional[float] = None) -> None:
+    def acquire_write_lock(self, wait_time: typing.Optional[float] = None) -> None:
         """
         Acquire write lock.
         :param wait_time:
@@ -44,7 +44,7 @@ class RWLock:
             if self._nb_write == 0:
                 self._cond.notify_all()
 
-    def acquire_read_lock(self, wait_time: Optional[float] = None) -> None:
+    def acquire_read_lock(self, wait_time: typing.Optional[float] = None) -> None:
         """
         Acquire read lock.
         :param wait_time:

@@ -1,12 +1,12 @@
 import logging
 import queue
+import typing
 from contextlib import contextmanager
 from time import time
-from typing import Optional, Mapping, Any
 from uuid import uuid4
 
-from pytools.err import CacheFullError
-from pytools.thread import RWLock, LockType
+from err import CacheFullError
+from thread import RWLock, LockType
 
 __all__ = ['CacheFullError', 'KVCache', 'KvCache']
 
@@ -25,9 +25,9 @@ class KVCache:
     TIME_EXTENSION_SEC = 5 * 60  # 5 minutes
 
     def __init__(self,
-                 name: Optional[str] = None,
+                 name: typing.Optional[str] = None,
                  maxsize: int = 0,
-                 time_extension_sec: Optional[float] = None) -> None:
+                 time_extension_sec: typing.Optional[float] = None) -> None:
         """
         Initializer.
         :param name: name
@@ -42,7 +42,7 @@ class KVCache:
         if name is None:
             logging.warning('You initialize the KVCache with no name. '
                             'Strongly suggest you pick up a meaningful name for it in order to debug.')
-        if time_extension_sec <= 0:
+        if time_extension_sec is not None and time_extension_sec <= 0:
             raise ValueError("'time_extension_sec' should > 0")
 
         self._name = name or f'cache.unnamed.{uuid4().hex}'
@@ -68,7 +68,7 @@ class KVCache:
             else:
                 self._lock.release_write_lock()
 
-    def set(self, kvdict: Mapping, expire_sec: Optional[float] = None) -> bool:
+    def set(self, kvdict: typing.Mapping, expire_sec: typing.Optional[float] = None) -> bool:
         """
         Set cache with k-v dict.
         :param kvdict: a dict that contains your cached object
@@ -93,7 +93,7 @@ class KVCache:
                         return False
         return True
 
-    def _heapq_newset(self, key: Any, value: Any, expire_value: float) -> bool:
+    def _heapq_newset(self, key: typing.Any, value: typing.Any, expire_value: float) -> bool:
         # No limit, put key into the queue
         if self._maxsize == 0 or len(self._kv_data) < self._maxsize:
             self._sorted_keys.put(expire_value, key)
@@ -131,7 +131,7 @@ class KVCache:
         new_expire = expire_value + self._time_extension
         return new_expire if new_expire < new_refresh else new_refresh
 
-    def get(self, key: Any) -> Any:
+    def get(self, key: typing.Any) -> typing.Any:
         """
         Get cached value with key.
         If the cache is expired, it will return None.
@@ -153,7 +153,7 @@ class KVCache:
             self._kv_data[key] = (expire_value, value)
             return value
 
-    def pop_n_expired(self, num: int = 0) -> Mapping:
+    def pop_n_expired(self, num: int = 0) -> typing.Mapping:
         """
         Pop N expired value.
         :param num: if num is 0, will get all expired key-values
