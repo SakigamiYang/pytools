@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from time import time
 from uuid import uuid4
 
-from err import CacheFullError
+from errors import CacheFullError
 from thread import RWLock, LockType
 
 __all__ = ['CacheFullError', 'KVCache', 'KvCache']
