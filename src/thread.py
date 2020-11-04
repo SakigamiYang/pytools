@@ -1,3 +1,4 @@
+# coding: utf-8
 import threading
 import typing
 from enum import Enum, auto

@@ -1,3 +1,4 @@
+# coding: utf-8
 import typing
 
 __all__ = ['BaseError', 'CacheFullError']

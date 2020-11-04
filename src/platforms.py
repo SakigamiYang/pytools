@@ -1,3 +1,4 @@
+# coding: utf-8
 import platform
 
 __all__ = ['is_windows', 'is_linux', 'is_mac']
