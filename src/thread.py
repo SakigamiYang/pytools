@@ -1,69 +1,104 @@
 # coding: utf-8
 import threading
 import typing
-from enum import Enum, auto
+from contextlib import contextmanager
 
-__all__ = ['RWLock', 'LockType']
-
-
-class LockType(Enum):
-    R_LOCK = auto()
-    W_LOCK = auto()
+__all__ = ['RWLock']
 
 
 class RWLock:
     """
-    Read Write Lock is a typical lock type in computer world.
+    A simple reader-writer lock Several readers can hold the lock simultaneously,
+    XOR one writer. Write locks have priority over reads to prevent write starvation.
     """
 
     def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._cond = threading.Condition(self._lock)
-        self._nb_read = 0
-        self._nb_write = 0
+        self._rwlock = 0
+        self._writers_waiting = 0
+        self._monitor = threading.Lock()
+        self._readers_ok = threading.Condition(self._monitor)
+        self._writers_ok = threading.Condition(self._monitor)
 
-    def acquire_write_lock(self, wait_time: typing.Optional[float] = None) -> None:
+    def acquire_read(self, timeout: typing.Optional[float] = None) -> None:
         """
-        Acquire write lock.
-        :param wait_time:
-            If wait_time is not None and wait_time >= 0, current thread will wait until wait_time passes.
+        Acquire a read lock. Several threads can hold this typeof lock.
+        It is exclusive with write locks.
+        :param timeout:
+            If timeout is not None and timeout >= 0, current thread will wait until timeout passes.
             If the call timeouts and cannot get the lock, will raise RuntimeError
         """
+        with self._monitor:
+            while self._rwlock < 0 or self._writers_waiting:
+                self._readers_ok.wait(timeout)
+            self._rwlock += 1
 
-        with self._cond:
-            if self._nb_write > 0 or self._nb_read > 0:
-                self._cond.wait(wait_time)
-            self._nb_write += 1
-
-    def release_write_lock(self) -> None:
+    def acquire_write(self, timeout: typing.Optional[float] = None) -> None:
         """
-        Release write lock.
-        """
-
-        with self._cond:
-            self._nb_write -= 1
-            if self._nb_write == 0:
-                self._cond.notify_all()
-
-    def acquire_read_lock(self, wait_time: typing.Optional[float] = None) -> None:
-        """
-        Acquire read lock.
-        :param wait_time:
-            If wait_time is not None and wait_time >= 0, current thread will wait until wait_time passes.
+        Acquire a write lock. Only one thread can hold this lock,
+        and only when no read locks are also held.
+        :param timeout:
+            If timeout is not None and timeout >= 0, current thread will wait until timeout passes.
             If the call timeouts and cannot get the lock, will raise RuntimeError
         """
+        with self._monitor:
+            while self._rwlock > 0:
+                self._writers_waiting += 1
+                self._writers_ok.wait(timeout)
+                self._writers_waiting -= 1
+            self._rwlock = -1
 
-        with self._cond:
-            if self._nb_write > 0:
-                self._cond.wait(wait_time)
-            self._nb_read += 1
-
-    def release_read_lock(self) -> None:
+    def promote(self, timeout: typing.Optional[float] = None) -> None:
         """
-        Release read lock.
+        Promote an already-acquired read lock to a write lock.
+        WARNING: it is very easy to deadlock with this method.
+        :param timeout:
+            If timeout is not None and timeout >= 0, current thread will wait until timeout passes.
+            If the call timeouts and cannot get the lock, will raise RuntimeError
         """
+        with self._monitor:
+            self._rwlock -= 1
+            while self._rwlock > 0:
+                self._writers_waiting += 1
+                self._writers_ok.wait(timeout)
+                self._writers_waiting -= 1
+            self._rwlock = -1
 
-        with self._cond:
-            self._nb_read -= 1
-            if self._nb_read == 0 and self._nb_write == 0:
-                self._cond.notify()
+    def demote(self) -> None:
+        """Demote an already-acquired write lock to a read lock."""
+        with self._monitor:
+            self._rwlock = 1
+            self._readers_ok.notify_all()
+
+    def release(self) -> None:
+        """Release a lock, whether read or write."""
+        with self._monitor:
+            if self._rwlock < 0:
+                self._rwlock = 0
+            else:
+                self._rwlock -= 1
+            wake_writers = self._writers_waiting and self._rwlock == 0
+            wake_readers = self._writers_waiting == 0
+        if wake_writers:
+            with self._writers_ok:
+                self._writers_ok.notify()
+        elif wake_readers:
+            with self._readers_ok:
+                self._readers_ok.notify_all()
+
+    @contextmanager
+    def lock_read(self, timeout: typing.Optional[float] = None) -> None:
+        """This method is designed to be used via the `with` statement."""
+        try:
+            self.acquire_read(timeout)
+            yield
+        finally:
+            self.release()
+
+    @contextmanager
+    def lock_write(self, timeout: typing.Optional[float] = None) -> None:
+        """This method is designed to be used via the `with` statement."""
+        try:
+            self.acquire_write(timeout)
+            yield
+        finally:
+            self.release()

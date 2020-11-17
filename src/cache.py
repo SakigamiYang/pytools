@@ -2,12 +2,11 @@
 import logging
 import queue
 import typing
-from contextlib import contextmanager
 from time import time
 from uuid import uuid4
 
 from errors import CacheFullError
-from thread import RWLock, LockType
+from thread import RWLock
 
 __all__ = ['CacheFullError', 'KVCache', 'KvCache']
 
@@ -53,22 +52,6 @@ class KVCache:
         self._kv_data = dict()
         self._lock = RWLock()
 
-    @contextmanager
-    def _release_lock(self, lock_type: LockType) -> None:
-        if lock_type == LockType.R_LOCK:
-            self._lock.acquire_read_lock()
-        else:
-            self._lock.acquire_write_lock()
-        try:
-            yield
-        except Exception as e:
-            logging.warning(f'some error happened in cache: {e}')
-        finally:
-            if lock_type == LockType.R_LOCK:
-                self._lock.release_read_lock()
-            else:
-                self._lock.release_write_lock()
-
     def set(self, kvdict: typing.Mapping, expire_sec: typing.Optional[float] = None) -> bool:
         """
         Set cache with k-v dict.
@@ -84,7 +67,7 @@ class KVCache:
         expire_value = expire_sec + time() \
             if expire_sec is not None and expire_sec < self.INFINITE_TIME_SEC \
             else self.INFINITE_TIME_SEC
-        with self._release_lock(LockType.W_LOCK):
+        with self._lock.lock_write():
             for k, v in kvdict.items():
                 if k in self._kv_data:
                     logging.debug(f'KVCache: Key:{k} updated.')
@@ -141,7 +124,7 @@ class KVCache:
         :return: cached value
         """
 
-        with self._release_lock(LockType.R_LOCK):
+        with self._lock.lock_read():
             if key not in self._kv_data:
                 return None
             expire_value, value = self._kv_data[key]
@@ -164,7 +147,7 @@ class KVCache:
         result = dict()
         now = time()
         all_expired = num == 0
-        with self._release_lock(LockType.R_LOCK):
+        with self._lock.lock_read():
             while True:
                 try:
                     pop_value = self._sorted_keys.get_nowait()
@@ -194,7 +177,7 @@ class KVCache:
         """
         Clear all cache.
         """
-        with self._release_lock(LockType.W_LOCK):
+        with self._lock.lock_write():
             del self._kv_data
             self._kv_data = dict()
             del self._sorted_keys
